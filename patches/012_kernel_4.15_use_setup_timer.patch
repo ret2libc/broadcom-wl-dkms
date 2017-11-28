@@ -1,0 +1,56 @@
+diff -Naur hybrid-v35_64-nodebug-pcoem-6_30_223_271.orig/src/wl/sys/wl_linux.c hybrid-v35_64-nodebug-pcoem-6_30_223_271/src/wl/sys/wl_linux.c
+--- hybrid-v35_64-nodebug-pcoem-6_30_223_271.orig/src/wl/sys/wl_linux.c	2017-11-28 22:26:07.945586796 +0100
++++ hybrid-v35_64-nodebug-pcoem-6_30_223_271/src/wl/sys/wl_linux.c	2017-11-29 21:40:02.257962155 +0100
+@@ -93,7 +93,7 @@
+ 
+ #include <wlc_wowl.h>
+ 
+-static void wl_timer(ulong data);
++static void wl_timer(struct timer_list *arg);
+ static void _wl_timer(wl_timer_t *t);
+ static struct net_device *wl_alloc_linux_if(wl_if_t *wlif);
+ 
+@@ -2312,9 +2312,9 @@
+ }
+ 
+ static void
+-wl_timer(ulong data)
++wl_timer(struct timer_list *arg)
+ {
+-	wl_timer_t *t = (wl_timer_t *)data;
++	wl_timer_t *t = container_of(arg, wl_timer_t, timer);
+ 
+ 	if (!WL_ALL_PASSIVE_ENAB(t->wl))
+ 		_wl_timer(t);
+@@ -2351,6 +2351,20 @@
+ 	WL_UNLOCK(wl);
+ }
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)
++void configuration_timer(wl_timer_t *t, void (*cb)(struct timer_list *))
++{
++	init_timer(&t->timer);
++	t->timer.data = (unsigned long) &t->timer;
++	t->timer.function = (void (*)(unsigned long)) cb;
++}
++#else
++void configuration_timer(wl_timer_t *t, void (*cb)(struct timer_list *))
++{
++	timer_setup(&t->timer, cb, 0);
++}
++#endif
++
+ wl_timer_t *
+ wl_init_timer(wl_info_t *wl, void (*fn)(void *arg), void *arg, const char *tname)
+ {
+@@ -2366,9 +2380,7 @@
+ 
+ 	bzero(t, sizeof(wl_timer_t));
+ 
+-	init_timer(&t->timer);
+-	t->timer.data = (ulong) t;
+-	t->timer.function = wl_timer;
++	configuration_timer(t, wl_timer);
+ 	t->wl = wl;
+ 	t->fn = fn;
+ 	t->arg = arg;
