@@ -1,0 +1,14 @@
+diff -Naur hybrid-v35_64-nodebug-pcoem-6_30_223_271.orig/src/wl/sys/wl_cfg80211_hybrid.c hybrid-v35_64-nodebug-pcoem-6_30_223_271/src/wl/sys/wl_cfg80211_hybrid.c
+--- hybrid-v35_64-nodebug-pcoem-6_30_223_271.orig/src/wl/sys/wl_cfg80211_hybrid.c	2017-12-29 00:33:05.260591671 +0100
++++ hybrid-v35_64-nodebug-pcoem-6_30_223_271/src/wl/sys/wl_cfg80211_hybrid.c	2017-12-29 00:33:34.354734991 +0100
+@@ -1973,9 +1973,9 @@
+ 		return;
+ 	}
+ 	wiphy_unregister(wdev->wiphy);
++	wl_to_wdev(wl) = NULL;
+ 	wiphy_free(wdev->wiphy);
+ 	kfree(wdev);
+-	wl_to_wdev(wl) = NULL;
+ }
+ 
+ static s32 wl_inform_bss(struct wl_cfg80211_priv *wl, struct wl_scan_results *bss_list)
