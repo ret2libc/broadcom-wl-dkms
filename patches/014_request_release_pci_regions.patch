@@ -1,0 +1,70 @@
+diff -Naur hybrid-v35_64-nodebug-pcoem-6_30_223_271.orig/src/wl/sys/wl_linux.c hybrid-v35_64-nodebug-pcoem-6_30_223_271/src/wl/sys/wl_linux.c
+--- hybrid-v35_64-nodebug-pcoem-6_30_223_271.orig/src/wl/sys/wl_linux.c	2018-02-04 17:46:15.607422313 +0100
++++ hybrid-v35_64-nodebug-pcoem-6_30_223_271/src/wl/sys/wl_linux.c	2018-02-04 17:48:41.834190624 +0100
+@@ -119,6 +119,8 @@
+ 	wl_if_t *wlif;
+ } priv_link_t;
+ 
++#define DRV_NAME "broadcom-wl"
++
+ #define WL_DEV_IF(dev)          ((wl_if_t*)((priv_link_t*)DEV_PRIV(dev))->wlif)
+ 
+ #ifdef WL_INFO
+@@ -772,6 +774,26 @@
+ 	}
+ 	pci_set_master(pdev);
+ 
++	rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
++	if (!rc) {
++		rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
++		if (rc) {
++			WL_ERROR(("wl: Unable to obtain 64bit DMA for consistent allocations\n"));
++			goto err_pci_disable;
++		}
++	}
++
++	if (rc) {
++		WL_ERROR(("wl: No suitable DMA available.\n"));
++		goto err_pci_disable;
++	}
++
++	rc = pci_request_regions(pdev, DRV_NAME);
++	if (rc) {
++		WL_ERROR(("wl request regions fail\n"));
++		goto err_pci_disable;
++	}
++
+ 	pci_read_config_dword(pdev, 0x40, &val);
+ 	if ((val & 0x0000ff00) != 0)
+ 		pci_write_config_dword(pdev, 0x40, val & 0xffff00ff);
+@@ -781,12 +803,20 @@
+ 	wl = wl_attach(pdev->vendor, pdev->device, pci_resource_start(pdev, 0), PCI_BUS, pdev,
+ 		pdev->irq, bar1_addr, bar1_size);
+ 
+-	if (!wl)
+-		return -ENODEV;
++	if (!wl) {
++		rc = -ENODEV;
++		goto err_pci_release;
++	}
+ 
+ 	pci_set_drvdata(pdev, wl);
+ 
+ 	return 0;
++
++err_pci_release:
++	pci_release_regions(pdev);
++err_pci_disable:
++	pci_disable_device(pdev);
++	return rc;
+ }
+ 
+ static int
+@@ -876,6 +906,7 @@
+ 	WL_UNLOCK(wl);
+ 
+ 	wl_free(wl);
++	pci_release_regions(pdev);
+ 	pci_disable_device(pdev);
+ 	pci_set_drvdata(pdev, NULL);
+ }

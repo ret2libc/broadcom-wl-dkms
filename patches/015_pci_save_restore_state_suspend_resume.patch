@@ -1,0 +1,57 @@
+diff -Naur hybrid-v35_64-nodebug-pcoem-6_30_223_271.orig/src/wl/sys/wl_linux.c hybrid-v35_64-nodebug-pcoem-6_30_223_271/src/wl/sys/wl_linux.c
+--- hybrid-v35_64-nodebug-pcoem-6_30_223_271.orig/src/wl/sys/wl_linux.c	2018-02-04 17:50:00.081119487 +0100
++++ hybrid-v35_64-nodebug-pcoem-6_30_223_271/src/wl/sys/wl_linux.c	2018-02-04 17:49:35.762272369 +0100
+@@ -845,9 +845,16 @@
+ 	}
+ 	WL_UNLOCK(wl);
+ 
+-	if (BUSTYPE(wl->pub->sih->bustype) == PCI_BUS)
++	if (BUSTYPE(wl->pub->sih->bustype) == PCI_BUS) {
+ 		si_pci_sleep(wl->pub->sih);
+ 
++#if !defined(SIMPLE_DEV_PM_OPS)
++		pci_save_state(pdev);
++		pci_disable_device(pdev);
++		pci_set_power_state(pdev, pci_choose_state(pdev, state));
++#endif
++	}
++
+ 	return 0;
+ }
+ 
+@@ -860,13 +867,34 @@
+ {
+ 	struct pci_dev *pdev = to_pci_dev(dev);
+ #endif
++	wl_info_t *wl;
+ 	int err = 0;
+-	wl_info_t *wl = (wl_info_t *) pci_get_drvdata(pdev);
++	u32 val;
++
++	wl = (wl_info_t *) pci_get_drvdata(pdev);
+ 	if (!wl) {
+ 		WL_ERROR(("wl: wl_resume: pci_get_drvdata failed\n"));
+ 		return -ENODEV;
+ 	}
+ 
++	pci_set_power_state(pdev, PCI_D0);
++	err = pci_enable_device(pdev);
++	if (err) {
++		printk(KERN_ERR DRV_NAME ": pci_enable_device failed on resume\n");
++		return err;
++	}
++	pci_restore_state(pdev);
++
++	/*
++	 * Suspend/Resume resets the PCI configuration space, so we have to
++	 * re-disable the RETRY_TIMEOUT register (0x41) to keep PCI Tx retries
++	 * from interfering with C3 CPU state. pci_restore_state won't help
++	 * here since it only restores the first 64 bytes pci config header.
++	 */
++	pci_read_config_dword(pdev, 0x40, &val);
++	if ((val & 0x0000ff00) != 0)
++		pci_write_config_dword(pdev, 0x40, val & 0xffff00ff);
++
+ 	WL_ERROR(("%s: PCI Resume handler\n", __FUNCTION__));
+ 	if (WLOFFLD_ENAB(wl->pub)) {
+ 		wlc_iovar_setint(wl->wlc, "wowl_activate", 0); 
